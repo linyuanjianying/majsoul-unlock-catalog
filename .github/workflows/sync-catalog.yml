@@ -29,18 +29,16 @@ jobs:
           data = yaml.safe_load(raw)
           keys = {'character','skin','title','item','loading_image','emoji','endings'}
           assert isinstance(data, dict) and set(data) == keys
-          def validate(node):
-              if isinstance(node, dict):
-                  for key, value in node.items():
-                      assert re.fullmatch(r'[1-9][0-9]*', str(key))
-                      validate(value)
-              elif isinstance(node, list):
-                  assert node
-                  assert all(type(v) is int and 0 < v <= 0xffffffff for v in node)
-                  assert len(node) == len(set(node))
-              else:
-                  raise ValueError('invalid catalog structure')
-          validate(data)
+          def validate_id_list(values):
+              assert isinstance(values, list) and values
+              assert all(type(v) is int and 0 < v <= 0xffffffff for v in values)
+              assert len(values) == len(set(values))
+          for section in keys - {"emoji"}:
+              validate_id_list(data[section])
+          assert isinstance(data["emoji"], dict) and data["emoji"]
+          for character, values in data["emoji"].items():
+              assert re.fullmatch(r"[1-9][0-9]*", str(character))
+              validate_id_list(values)
           payload = (json.dumps(data, ensure_ascii=False, indent=2) + '\n').encode()
           manifest_path = root / 'catalog/manifest.json'
           old = json.loads(manifest_path.read_text())
