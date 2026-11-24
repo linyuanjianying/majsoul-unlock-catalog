@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "version": 6,
+  "versionName": "2026.11.24.upstream",
+  "updatedAt": "2026-11-24",
+  "minModuleVersionCode": 25,
+  "dataFile": "unlock-data.json",
+  "size": 32868,
+  "sha256": "723c0f12bee679d74cad2d3549aa407ddee9123710040958ad67fdd0da47afa8"
+}

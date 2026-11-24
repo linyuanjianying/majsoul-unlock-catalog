@@ -1,0 +1,73 @@
+name: Sync unlock catalog
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Sync public upstream catalog
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/Avenshy/MajsoulMax/main/config/max_data.yaml \
+            -o /tmp/max_data.yaml
+          python3 - <<'PY'
+          import hashlib, json, pathlib, re
+          import yaml
+          root = pathlib.Path('.')
+          raw = pathlib.Path('/tmp/max_data.yaml').read_text(encoding='utf-8')
+          data = yaml.safe_load(raw)
+          keys = {'character','skin','title','item','loading_image','emoji','endings'}
+          assert isinstance(data, dict) and set(data) == keys
+          def validate(node):
+              if isinstance(node, dict):
+                  for key, value in node.items():
+                      assert re.fullmatch(r'[1-9][0-9]*', str(key))
+                      validate(value)
+              elif isinstance(node, list):
+                  assert node
+                  assert all(type(v) is int and 0 < v <= 0xffffffff for v in node)
+                  assert len(node) == len(set(node))
+              else:
+                  raise ValueError('invalid catalog structure')
+          validate(data)
+          payload = (json.dumps(data, ensure_ascii=False, indent=2) + '\n').encode()
+          manifest_path = root / 'catalog/manifest.json'
+          old = json.loads(manifest_path.read_text())
+          checksum = hashlib.sha256(payload).hexdigest()
+          if checksum == old['sha256']:
+              print('Catalog unchanged.')
+              raise SystemExit(0)
+          manifest = {
+              'schemaVersion': 1,
+              'version': old['version'] + 1,
+              'versionName': __import__('datetime').date.today().strftime('%Y.%m.%d') + '.upstream',
+              'updatedAt': __import__('datetime').date.today().isoformat(),
+              'minModuleVersionCode': 25,
+              'dataFile': 'unlock-data.json',
+              'size': len(payload),
+              'sha256': checksum,
+          }
+          (root / 'catalog/unlock-data.json').write_bytes(payload)
+          manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+          print(f"Catalog updated: version={manifest['version']} skins={len(data['skin'])}")
+          PY
+      - name: Commit changed catalog
+        run: |
+          if git diff --quiet -- catalog/manifest.json catalog/unlock-data.json; then
+            echo 'No catalog changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add catalog/manifest.json catalog/unlock-data.json
+          git commit -m 'chore: sync upstream unlock catalog'
+          git push
